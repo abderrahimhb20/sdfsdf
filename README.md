@@ -175,7 +175,7 @@ Kibana → Discover → sélectionner mikrotik-syslog-*
 → Tu vois les logs MikroTik en temps réel ! 🎉
 ```
 
----
+```
 # 1️⃣ Rename interfaces (optional but clean)
 /interface ethernet
 set [ find default-name=ether1 ] name=wan-port
@@ -212,3 +212,4 @@ add chain=srcnat out-interface=wan-port action=masquerade
 # 9️⃣ Enable interfaces (just in case)
 /interface enable wan-port
 /interface enable lan-port
+```
