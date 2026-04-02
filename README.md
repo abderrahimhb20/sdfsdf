@@ -176,5 +176,39 @@ Kibana → Discover → sélectionner mikrotik-syslog-*
 ```
 
 ---
+# 1️⃣ Rename interfaces (optional but clean)
+/interface ethernet
+set [ find default-name=ether1 ] name=wan-port
+set [ find default-name=ether2 ] name=lan-port
 
-Lance l'installation et envoie-moi les screenshots étape par étape 📸
+# 2️⃣ Set WAN (DHCP client for internet)
+/ip dhcp-client
+add interface=wan-port disabled=no
+
+# 3️⃣ Set LAN IP
+/ip address
+add address=192.168.19.1/24 interface=lan-port
+
+# 4️⃣ Create DHCP pool
+/ip pool
+add name=pool-lan ranges=192.168.19.10-192.168.19.254
+
+# 5️⃣ DHCP server
+/ip dhcp-server
+add name=dhcp-lan interface=lan-port address-pool=pool-lan disabled=no
+
+# 6️⃣ DHCP network config
+/ip dhcp-server network
+add address=192.168.19.0/24 gateway=192.168.19.1 dns-server=8.8.8.8,1.1.1.1
+
+# 7️⃣ DNS config
+/ip dns
+set servers=8.8.8.8,1.1.1.1 allow-remote-requests=yes
+
+# 8️⃣ NAT (VERY IMPORTANT)
+/ip firewall nat
+add chain=srcnat out-interface=wan-port action=masquerade
+
+# 9️⃣ Enable interfaces (just in case)
+/interface enable wan-port
+/interface enable lan-port
