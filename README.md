@@ -207,6 +207,54 @@ set servers=8.8.8.8,1.1.1.1 allow-remote-requests=yes
 
 # 8️⃣ NAT (VERY IMPORTANT)
 /ip firewall nat
+
+Je vois le problème ! Il y a des indices **internes Kibana** mais **pas de `mikrotik-syslog-*`**. Logstash n'a pas encore reçu de données.
+
+Scrolle vers le bas pour voir le status Logstash, et lance ces commandes :
+
+```bash
+# 1. Voir si Logstash tourne
+sudo systemctl status logstash --no-pager | head -20
+
+# 2. Logstash écoute sur 514 ?
+sudo ss -ulnp | grep 514
+
+# 3. Test manuel — envoyer un faux log
+echo "<14>Apr  3 12:00:00 mikrotik TEST-ELK" | nc -u -w1 127.0.0.1 514
+
+# 4. Attendre 5 secondes puis vérifier
+sleep 5
+curl http://localhost:9200/_cat/indices?v | grep mikrotik
+```
+
+---
+
+## ⚠️ Si Logstash n'est pas démarré :
+
+```bash
+# Démarrer Logstash
+sudo systemctl start logstash
+
+# Attendre 3 minutes (Logstash est lent au démarrage)
+sleep 180
+
+# Vérifier
+sudo systemctl status logstash --no-pager | head -5
+```
+
+---
+
+## ⚠️ Si port 514 nécessite des droits root :
+
+```bash
+# Autoriser Logstash à utiliser le port 514 (< 1024)
+sudo setcap 'cap_net_bind_service=+ep' \
+  /usr/share/logstash/jdk/bin/java
+
+sudo systemctl restart logstash
+```
+
+Envoie le résultat du `status logstash` 👇
 add chain=srcnat out-interface=wan-port action=masquerade
 
 # 9️⃣ Enable interfaces (just in case)
