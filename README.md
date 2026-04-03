@@ -364,3 +364,8 @@ curl http://localhost:9200/_cat/indices?v | grep mikrotik
 
 # Voir les données
 curl "http://localhost:9200/mikrotik-syslog-*/_search?pretty&size=3"
+# Vérifier que les docs existent bien
+curl "http://localhost:9200/mikrotik-syslog-*/_count"
+
+# Rafraîchir l'index
+curl -X POST "http://localhost:9200/mikrotik-syslog-*/_refresh"
