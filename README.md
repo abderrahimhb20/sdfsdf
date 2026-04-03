@@ -369,3 +369,57 @@ curl "http://localhost:9200/mikrotik-syslog-*/_count"
 
 # Rafraîchir l'index
 curl -X POST "http://localhost:9200/mikrotik-syslog-*/_refresh"
+
+Le problème est **"No fields exist in this data view"** — le Data View est mal créé. Il faut le supprimer et recréer correctement.
+
+---
+
+## 🔧 Fix complet — sur Ubuntu terminal
+
+```bash
+# 1. Supprimer l'ancien index et recréer avec de nouvelles données
+curl -X DELETE "http://localhost:9200/mikrotik-syslog-*"
+
+# 2. Envoyer 5 nouveaux logs de test
+for i in 1 2 3 4 5; do
+  echo "<14>$(date '+%b %d %H:%M:%S') mikrotik TEST-ELK-$i firewall drop" \
+    | nc -u -w1 127.0.0.1 5514
+  sleep 1
+done
+
+# 3. Attendre et vérifier
+sleep 10
+curl "http://localhost:9200/mikrotik-syslog-*/_count"
+```
+
+---
+
+## 🔧 Puis dans Kibana — Recréer le Data View
+
+**Dismiss** les 2 popups d'abord, puis :
+
+```
+☰ → Stack Management → Data Views
+→ Supprimer "mikrotik-syslog-*" (icône poubelle 🗑️)
+→ Create data view
+
+Name          : mikrotik-syslog-*
+Index pattern : mikrotik-syslog-*
+Timestamp     : @timestamp
+→ Save
+```
+
+---
+
+## ⚠️ Si "No fields" persiste — forcer le refresh du mapping
+
+```bash
+# Rafraîchir le mapping Kibana
+curl -X POST "http://localhost:9200/mikrotik-syslog-*/_refresh"
+
+# Voir les champs disponibles
+curl "http://localhost:9200/mikrotik-syslog-*/_mapping?pretty" \
+  | grep '"type"' | head -20
+```
+
+Envoie le résultat du `_count` et du `_mapping` 👇
