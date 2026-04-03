@@ -359,3 +359,8 @@ curl http://localhost:9200/_cat/indices?v | grep mikrotik
 ```
 
 Envoie le résultat du `ss -ulnp | grep 5514` 👇
+# Vérifier les nouveaux logs
+curl http://localhost:9200/_cat/indices?v | grep mikrotik
+
+# Voir les données
+curl "http://localhost:9200/mikrotik-syslog-*/_search?pretty&size=3"
