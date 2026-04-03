@@ -312,5 +312,50 @@ echo "<14>Apr  3 12:00:00 mikrotik TEST-ELK" \
 sleep 10
 curl http://localhost:9200/_cat/indices?v | grep mikrotik
 ```
+L'erreur est confirmée : **"Permission denied - bind(2) for port 514"** — mais je vois aussi que **port 5514 est configuré** ✅ et le test `nc` a été envoyé.
 
-Lance **Solution 1** et envoie le résultat 👇
+Mais `curl | grep mikrotik` retourne **vide** — Logstash n'a pas encore créé l'index. C'est parce que Logstash tourne encore sur l'ancien port 514 et redémarre en boucle.
+
+Fix complet :
+
+```bash
+# 1. Arrêter Logstash
+sudo systemctl stop logstash
+
+# 2. Vérifier que le port est bien 5514 dans la config
+sudo grep "port" /etc/logstash/conf.d/mikrotik-syslog.conf
+
+# 3. Aussi limiter la heap de Logstash (tu as peu de RAM)
+sudo bash -c 'cat > /etc/logstash/jvm.options.d/heap.options << EOF
+-Xms256m
+-Xmx256m
+EOF'
+
+# 4. Redémarrer proprement
+sudo systemctl start logstash
+
+# 5. Attendre que Logstash démarre complètement (3 min)
+sleep 180
+
+# 6. Vérifier le port
+sudo ss -ulnp | grep 5514
+```
+
+Doit afficher :
+```
+udp  UNCONN  0  0  0.0.0.0:5514  *  users:(("java",...))
+```
+
+Puis tester :
+```bash
+# Envoyer faux log
+echo "<14>Apr  3 12:00:00 mikrotik TEST-ELK" \
+  | nc -u -w1 127.0.0.1 5514
+
+sleep 10
+
+# Vérifier index créé
+curl http://localhost:9200/_cat/indices?v | grep mikrotik
+```
+
+Envoie le résultat du `ss -ulnp | grep 5514` 👇
