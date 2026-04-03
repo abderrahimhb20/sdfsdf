@@ -422,4 +422,127 @@ curl "http://localhost:9200/mikrotik-syslog-*/_mapping?pretty" \
   | grep '"type"' | head -20
 ```
 
-Envoie le résultat du `_count` et du `_mapping` 👇
+كيفاش نبني داشبورد Kibana في Windows بناءً على بيانات MikroTik — شرح كامل خطوة بخطوة:---
+
+## المراحل بالتفصيل
+
+### 1. تحضير MikroTik
+
+في الـ **Winbox** أو **Terminal** ديال MikroTik، خص تفعّل اثنين:
+
+**Syslog** (للـ logs):
+```
+/system logging action
+set remote=WINDOWS_IP remote-port=514 name=syslog
+/system logging
+add topics=firewall,info action=syslog
+```
+
+**NetFlow** (للـ traffic):
+```
+/ip traffic-flow
+set enabled=yes active-flow-timeout=1m
+/ip traffic-flow target
+add dst-address=WINDOWS_IP port=2055 version=9
+```
+
+---
+
+### 2. تنزيل وتثبيت ELK Stack على Windows
+
+من [elastic.co/downloads](https://www.elastic.co/downloads/)، حمّل هاد الثلاثة:
+- **Elasticsearch** → فك الضغط في `C:\elasticsearch`
+- **Logstash** → `C:\logstash`
+- **Kibana** → `C:\kibana`
+
+---
+
+### 3. تشغيل Elasticsearch
+
+```cmd
+cd C:\elasticsearch\bin
+elasticsearch.bat
+```
+دير تيستي على `http://localhost:9200` — خاصك تشوف JSON بـ `cluster_name`.
+
+---
+
+### 4. Config Logstash Pipeline
+
+دير فايل `C:\logstash\conf.d\mikrotik.conf`:
+
+```ruby
+input {
+  syslog {
+    port => 514
+    type => "mikrotik-syslog"
+  }
+  udp {
+    port => 2055
+    codec => netflow { versions => [9] }
+    type => "mikrotik-netflow"
+  }
+}
+
+filter {
+  if [type] == "mikrotik-syslog" {
+    grok {
+      match => { "message" => "%{SYSLOGBASE} %{GREEDYDATA:msg}" }
+    }
+  }
+  if [type] == "mikrotik-netflow" {
+    mutate { add_field => { "[@metadata][index]" => "netflow" } }
+  }
+  geoip {
+    source => "src_addr"
+    target => "src_geo"
+  }
+}
+
+output {
+  elasticsearch {
+    hosts => ["http://localhost:9200"]
+    index => "mikrotik-%{type}-%{+YYYY.MM.dd}"
+  }
+}
+```
+
+ثم شغّلو:
+```cmd
+cd C:\logstash\bin
+logstash.bat -f C:\logstash\conf.d\mikrotik.conf
+```
+
+---
+
+### 5. تشغيل Kibana
+
+```cmd
+cd C:\kibana\bin
+kibana.bat
+```
+دخل على `http://localhost:5601`
+
+---
+
+### 6. بناء Dashboard في Kibana
+
+1. **Stack Management → Index Patterns** → دير index `mikrotik-*`
+2. **Discover** → تأكد البيانات راهي توصل
+3. **Visualizations** → دير:
+   - **Bar chart** لـ Top Source IPs
+   - **Line chart** لـ Traffic over time
+   - **Pie chart** لـ Protocols (TCP/UDP)
+   - **Data table** لـ Firewall drops
+   - **Maps** لـ GeoIP visualization
+4. **Dashboard** → جمع كل الـ panels
+
+---
+
+### نصائح مهمة
+
+- خاصك **Java 11+** مثبت على Windows باش يخدم Elasticsearch
+- فتح الـ ports في Windows Firewall: **514 UDP** و **2055 UDP** و **9200 TCP**
+- تقدر تثبتهم كـ Windows Services بـ `--install` باش يبدأو تلقائي
+
+واش بغيتي config أكمل أو تفصيل في جزء معين؟
