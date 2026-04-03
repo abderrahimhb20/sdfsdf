@@ -261,3 +261,56 @@ add chain=srcnat out-interface=wan-port action=masquerade
 /interface enable wan-port
 /interface enable lan-port
 ```
+Je vois **ERROR** dans les logs Logstash et **port 514 vide** (Logstash n'écoute pas sur 514). Voyons l'erreur exacte :
+
+```bash
+# Voir l'erreur complète Logstash
+sudo journalctl -u logstash -n 30 --no-pager | grep -i "error\|ERROR\|bind\|permission\|514"
+```
+
+---
+
+## 🔧 Fix — Port 514 nécessite root privileges
+
+Le port 514 est un port système (< 1024). Logstash ne peut pas l'utiliser directement. **2 solutions** :
+
+### Solution 1 — Changer le port vers 5514 (plus simple)
+
+```bash
+# Modifier la config Logstash
+sudo sed -i 's/port  => 514/port  => 5514/' \
+  /etc/logstash/conf.d/mikrotik-syslog.conf
+
+# Vérifier
+grep "port" /etc/logstash/conf.d/mikrotik-syslog.conf
+
+# Redémarrer
+sudo systemctl restart logstash
+sleep 30
+
+# Vérifier que le port est ouvert
+sudo ss -ulnp | grep 5514
+```
+
+### Solution 2 — Rediriger 514 → 5514 avec iptables
+
+```bash
+sudo iptables -t nat -A PREROUTING -p udp --dport 514 \
+  -j REDIRECT --to-port 5514
+```
+
+---
+
+## Après le fix — tester :
+
+```bash
+# Envoyer un faux log sur le nouveau port
+echo "<14>Apr  3 12:00:00 mikrotik TEST-ELK" \
+  | nc -u -w1 127.0.0.1 5514
+
+# Attendre et vérifier l'index
+sleep 10
+curl http://localhost:9200/_cat/indices?v | grep mikrotik
+```
+
+Lance **Solution 1** et envoie le résultat 👇
