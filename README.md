@@ -433,7 +433,7 @@ curl "http://localhost:9200/mikrotik-syslog-*/_mapping?pretty" \
 **Syslog** (للـ logs):
 ```
 /system logging action
-set remote=WINDOWS_IP remote-port=514 name=syslog
+set remote=192.254.223.12 remote-port=514 name=syslog
 /system logging
 add topics=firewall,info action=syslog
 ```
@@ -443,7 +443,7 @@ add topics=firewall,info action=syslog
 /ip traffic-flow
 set enabled=yes active-flow-timeout=1m
 /ip traffic-flow target
-add dst-address=WINDOWS_IP port=2055 version=9
+add dst-address=192.254.223.12 port=2055 version=9
 ```
 
 ---
