@@ -539,10 +539,11 @@ kibana.bat
 
 ---
 
-### نصائح مهمة
+##/system logging action
+add name=logstash target=remote remote=116.202.19.149 remote-port=5140 syslog-facility=local0 bsd-syslog=yes
 
-- خاصك **Java 11+** مثبت على Windows باش يخدم Elasticsearch
-- فتح الـ ports في Windows Firewall: **514 UDP** و **2055 UDP** و **9200 TCP**
-- تقدر تثبتهم كـ Windows Services بـ `--install` باش يبدأو تلقائي
-
-واش بغيتي config أكمل أو تفصيل في جزء معين؟
+/system logging  
+add action=logstash topics=firewall
+add action=logstash topics=info
+add action=logstash topics=warning
+add action=logstash topics=errorصيل في جزء معين؟
