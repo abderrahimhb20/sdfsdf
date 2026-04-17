@@ -548,4 +548,14 @@ add action=logstash topics=info
 add action=logstash topics=warning
 add action=logstash topics=errorصيل في جزء معين؟
 
-echo "test" | nc -u -w1 116.202.19.149 5140
+# 1 - Installer socat
+sudo apt install -y socat
+
+# 2 - Lancer le relay en background
+sudo socat UDP4-RECVFROM:5140,fork UDP4-SENDTO:116.202.19.149:5140 &
+
+# 3 - Vérifier qu'il écoute
+ss -ulnp | grep 5140
+ip addr show  
+# Voir les paquets UDP qui arrivent
+sudo tcpdump -i any udp port 5140 -v
