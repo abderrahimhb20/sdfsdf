@@ -547,4 +547,5 @@ add action=logstash topics=firewall
 add action=logstash topics=info
 add action=logstash topics=warning
 add action=logstash topics=errorصيل في جزء معين؟
-socat UDP4-RECVFROM:5140,fork UDP4-SENDTO:116.202.19.149:5140 &
+
+echo "test" | nc -u -w1 116.202.19.149 5140
