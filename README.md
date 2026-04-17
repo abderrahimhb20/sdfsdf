@@ -569,3 +569,65 @@ bash# Vérifier qu'il écoute (commande séparée)
 ss -ulnp | grep 5140
 bash# Voir ton IP Ubuntu VM
 ip addr show
+Je vois le problème ! Le socat s'arrête encore `[1]+ Stopped`. C'est parce qu'il a besoin de tourner en **foreground** ou avec `nohup`.
+
+---
+
+## Fix — Lancer socat correctement
+
+```bash
+# Tuer tout
+sudo pkill socat
+
+# Lancer avec nohup pour qu'il ne s'arrête pas
+sudo nohup socat UDP4-RECVFROM:5140,fork UDP4-SENDTO:116.202.19.149:5140 > /tmp/socat.log 2>&1 &
+
+# Vérifier le PID
+echo "PID: $!"
+
+# Vérifier qu'il écoute
+sleep 2
+ss -ulnp | grep 5140
+```
+
+---
+
+## Vérifier que socat tourne vraiment
+
+```bash
+# Voir si le processus est actif
+ps aux | grep socat
+
+# Voir les logs socat
+tail -f /tmp/socat.log
+```
+
+---
+
+## Si socat continue à s'arrêter — Alternative avec screen
+
+```bash
+sudo apt install -y screen
+
+sudo screen -dmS socat-relay bash -c \
+  'socat UDP4-RECVFROM:5140,fork UDP4-SENDTO:116.202.19.149:5140'
+
+# Vérifier
+ss -ulnp | grep 5140
+```
+
+---
+
+## Après que socat tourne — Changer MikroTik
+
+Dans **Winbox → System → Logging → Actions → logstash** :
+
+- Remote Address: **`192.168.19.128`**
+- Remote Port: **`5140`**
+
+Test dans Winbox Terminal :
+```
+/log info "TEST RELAY OK"
+```
+
+Envoie-moi le résultat de `ps aux | grep socat` ! 🔧
