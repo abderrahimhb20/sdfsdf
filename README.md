@@ -559,3 +559,13 @@ ss -ulnp | grep 5140
 ip addr show  
 # Voir les paquets UDP qui arrivent
 sudo tcpdump -i any udp port 5140 -v
+Fix 1 — Relancer socat correctement
+Sur Ubuntu VM, ouvre un nouveau terminal et tape commande par commande :
+bash# Tuer l'ancien socat
+sudo pkill socat
+bash# Relancer socat correctement
+sudo socat UDP4-RECVFROM:5140,fork UDP4-SENDTO:116.202.19.149:5140 &
+bash# Vérifier qu'il écoute (commande séparée)
+ss -ulnp | grep 5140
+bash# Voir ton IP Ubuntu VM
+ip addr show
