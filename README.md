@@ -631,3 +631,74 @@ Test dans Winbox Terminal :
 ```
 
 Envoie-moi le résultat de `ps aux | grep socat` ! 🔧
+
+Je vois le problème. Logstash tourne en mode `--config.test_and_exit` (validation seulement), et Kibana essaie d'accéder à `localhost:5601` mais ne répond pas encore.
+
+Voici le diagnostic et fix étape par étape :
+
+## 1. Vérifier l'état réel des services
+```bash
+sudo systemctl status elasticsearch
+sudo systemctl status kibana
+sudo systemctl status logstash
+```
+
+## 2. Le problème probable — Kibana pas encore démarré
+
+La capture montre que tu curl `localhost:5601` dans le terminal de Logstash. Kibana prend **1-2 minutes** à démarrer. Check les logs :
+
+```bash
+sudo journalctl -u kibana -f --no-pager | tail -30
+```
+
+## 3. Fix si Kibana fail au démarrage
+
+```bash
+# Voir l'erreur exacte
+sudo journalctl -xe -u kibana | tail -50
+```
+
+**Causes fréquentes et fixes :**
+
+```bash
+# Cas 1 : Elasticsearch pas encore prêt quand Kibana démarre
+curl http://localhost:9200  # teste d'abord ça
+
+# Cas 2 : Kibana config pointe vers mauvais host
+sudo nano /etc/kibana/kibana.yml
+# Vérifier que ces lignes sont correctes :
+# server.host: "0.0.0.0"
+# elasticsearch.hosts: ["http://localhost:9200"]
+```
+
+## 4. Séquence correcte avec attente
+
+```bash
+# Elasticsearch
+sudo systemctl start elasticsearch
+echo "Attente Elasticsearch..."
+until curl -s http://localhost:9200 > /dev/null; do sleep 5; done
+echo "Elasticsearch OK ✅"
+
+# Kibana
+sudo systemctl start kibana
+echo "Attente Kibana (peut prendre 60-90s)..."
+until curl -s http://localhost:5601 > /dev/null; do sleep 5; done
+echo "Kibana OK ✅"
+
+# Logstash (sans --config.test_and_exit cette fois)
+sudo systemctl start logstash
+```
+
+## 5. Si Kibana refuse toujours
+
+```bash
+# Vérifier le port
+ss -tlnp | grep 5601
+
+# Vérifier la version compatibility
+curl http://localhost:9200
+# La version Elasticsearch doit matcher Kibana (ex: tous les deux 8.x)
+```
+
+Envoie-moi le output de `sudo journalctl -xe -u kibana | tail -30` et je te dis exactement ce qui bloque.
