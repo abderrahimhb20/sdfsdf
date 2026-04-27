@@ -701,5 +701,74 @@ curl http://localhost:9200
 # La version Elasticsearch doit matcher Kibana (ex: tous les deux 8.x)
 ```
 
-Envoie-moi le output de `sudo journalctl -xe -u kibana | tail -30` et je te dis exactement ce qui bloque.
+Je vois ton setup : Ubuntu avec l'interface **ens33** (192.168.70.239/24) et **ens37** (192.168.19.128/24), et MikroTik avec LAN **192.168.19.1/24** et WAN **192.168.100.36/24**.
+
+**ens37** est déjà dans le réseau 192.168.19.0/24 — même réseau que le LAN MikroTik (192.168.19.1). Il faut juste configurer la gateway et le DNS.
+
+---
+
+## Solution — Configurer Ubuntu pour passer par MikroTik
+
+### 1. Configuration temporaire (test immédiat)
+
+```bash
+# Ajouter la gateway MikroTik
+sudo ip route add default via 192.168.19.1 dev ens37
+
+# Ajouter DNS
 echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
+
+# Tester
+ping 8.8.8.8
+ping google.com
+```
+
+---
+
+### 2. Configuration permanente (Netplan)
+
+```bash
+sudo nano /etc/netplan/00-installer-config.yaml
+```
+
+Contenu à mettre :
+
+```yaml
+network:
+  version: 2
+  ethernets:
+    ens33:
+      dhcp4: true
+    ens37:
+      dhcp4: no
+      addresses:
+        - 192.168.19.200/24
+      routes:
+        - to: default
+          via: 192.168.19.1
+      nameservers:
+        addresses: [8.8.8.8, 1.1.1.1]
+```
+
+```bash
+sudo netplan apply
+ping google.com
+```
+
+---
+
+### 3. Vérifier côté MikroTik
+
+Dans WinBox → **IP → Firewall → NAT**, vérifie qu'il y a une règle :
+- Chain: `srcnat`
+- Src. Address: `192.168.19.0/24`
+- Action: `masquerade`
+
+Si elle n'existe pas :
+```routeros
+/ip firewall nat add chain=srcnat src-address=192.168.19.0/24 action=masquerade
+```
+
+---
+
+> **Note :** J'utilise `192.168.19.200` comme IP statique — choisis n'importe quelle IP libre dans `192.168.19.x` (pas `.1` qui est MikroTik).
