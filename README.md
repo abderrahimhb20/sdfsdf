@@ -702,3 +702,4 @@ curl http://localhost:9200
 ```
 
 Envoie-moi le output de `sudo journalctl -xe -u kibana | tail -30` et je te dis exactement ce qui bloque.
+echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
