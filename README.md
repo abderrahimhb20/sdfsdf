@@ -769,6 +769,50 @@ Si elle n'existe pas :
 /ip firewall nat add chain=srcnat src-address=192.168.19.0/24 action=masquerade
 ```
 
+---Je vois plusieurs problèmes dans tes screenshots :
+
+**Image 1** : "Cette application ne peut pas s'exécuter sur votre PC" → tu as téléchargé la mauvaise version (ARM au lieu de x64)
+
+**Image 2** : Même erreur `C:\ProgramData\DockerDesktop` qu'avant
+
+**Image 3/4** : Pas de dossier `ProgramData` visible + WSL est installé (bon signe)
+
 ---
 
-> **Note :** J'utilise `192.168.19.200` comme IP statique — choisis n'importe quelle IP libre dans `192.168.19.x` (pas `.1` qui est MikroTik).
+## Fix complet — suis ces étapes dans l'ordre
+
+### 1. Télécharge la bonne version
+
+Va sur ce lien direct :
+**https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe**
+
+C'est la version **Windows x64** (AMD64). Pas la version ARM.
+
+---
+
+### 2. Nettoie les restes avant de réinstaller
+
+Ouvre **PowerShell en administrateur** et colle tout ça :
+
+```powershell
+Remove-Item -Recurse -Force "C:\ProgramData\DockerDesktop" -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force "C:\ProgramData\Docker" -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force "$env:APPDATA\Docker" -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force "$env:LOCALAPPDATA\Docker" -ErrorAction SilentlyContinue
+```
+
+---
+
+### 3. Réinstalle correctement
+
+Fais **clic droit** sur `Docker Desktop Installer.exe` → **"Exécuter en tant qu'administrateur"**
+
+---
+
+### 4. Vérifie après installation
+
+```powershell
+docker --version
+```
+
+Dis-moi ce que tu vois après ces étapes.
