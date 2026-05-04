@@ -891,3 +891,4 @@ You should see entry #5 with `name=infralogs` and `bsd-syslog=yes`.
 
 **Important:** The "Error fetching data" on infralogs might also be a **timezone/account issue on their side** — not MikroTik at all. After the test log, wait 60 seconds then **refresh the infralogs page**. If still red, try clicking **Edit** on the tenant and just click Save again to force a refresh on their end.
 And send me a screenshot of the **Configuration tab** on infralogs — it's possible the port changed or the tenant needs to be re-saved. Sometimes "Error fetching data" is an infralogs API issue, not a MikroTik issue.
+echo "<14>May 4 16:30:00 MikroTik test: hello infralogs" | nc -u 51.195.116.92 60109
