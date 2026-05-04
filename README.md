@@ -852,5 +852,42 @@ Also check what IP your wan-port actually has:
 ```bash
 /ip address print
 ```
+I can see the problem now. The `infralogs` action was **removed** ("no such item") and the new one has a **syntax error** — it didn't get created properly. Also the `bsd-syslog=yes` part is missing from the last attempt.
 
+Run this **single line by line** (copy one line at a time):
+
+**Line 1:**
+```
+/system logging action add name=infralogs target=remote remote=51.195.116.92 remote-port=60109 bsd-syslog=yes syslog-facility=daemon syslog-severity=auto
+```
+
+**Line 2 (only if rules were removed too):**
+```
+/system logging add action=infralogs topics=info
+```
+```
+/system logging add action=infralogs topics=warning
+```
+```
+/system logging add action=infralogs topics=error
+```
+```
+/system logging add action=infralogs topics=critical
+```
+
+**Line 3 — Verify it was created:**
+```
+/system logging action print
+```
+
+You should see entry #5 with `name=infralogs` and `bsd-syslog=yes`.
+
+**Then test:**
+```
+/log info "test infralogs"
+```
+
+---
+
+**Important:** The "Error fetching data" on infralogs might also be a **timezone/account issue on their side** — not MikroTik at all. After the test log, wait 60 seconds then **refresh the infralogs page**. If still red, try clicking **Edit** on the tenant and just click Save again to force a refresh on their end.
 And send me a screenshot of the **Configuration tab** on infralogs — it's possible the port changed or the tenant needs to be re-saved. Sometimes "Error fetching data" is an infralogs API issue, not a MikroTik issue.
