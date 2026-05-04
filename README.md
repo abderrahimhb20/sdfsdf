@@ -814,5 +814,43 @@ Fais **clic droit** sur `Docker Desktop Installer.exe` → **"Exécuter en tant 
 ```powershell
 docker --version
 ```
+I can see the situation clearly now. The **ping works perfectly** (0% packet loss to 51.195.116.92) — so network connectivity is fine. The problem is something else.
 
-Dis-moi ce que tu vois après ces étapes.
+I notice two important things in your screenshot:
+
+**1. The firewall rule on the right side** — you have a rule with chain=output, protocol=UDP, dst-port=60109, but it says **"no such item"** when adding. This suggests a syntax issue but the rule might still exist.
+
+**2. The real problem** — look at your routing table:
+```
+DAd 0.0.0.0/0    gateway=192.168.100.1   (wan-port)
+```
+
+Your default route goes through `wan-port` with gateway `192.168.100.1`. But the **syslog action has `src-address=0.0.0.0`** which may cause the UDP packet to go out the wrong interface.
+
+Try this fix — run these commands:
+
+```bash
+# Remove the old infralogs action
+/system logging action remove [find name=infralogs]
+
+# Recreate it with explicit source address
+/system logging action add \
+  name=infralogs \
+  target=remote \
+  remote=51.195.116.92 \
+  remote-port=60109 \
+  bsd-syslog=yes \
+  syslog-facility=daemon \
+  syslog-severity=auto \
+  src-address=192.168.100.1
+
+# Test
+/log info "test infralogs fixed"
+```
+
+Also check what IP your wan-port actually has:
+```bash
+/ip address print
+```
+
+And send me a screenshot of the **Configuration tab** on infralogs — it's possible the port changed or the tenant needs to be re-saved. Sometimes "Error fetching data" is an infralogs API issue, not a MikroTik issue.
