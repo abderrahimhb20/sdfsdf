@@ -927,24 +927,23 @@ Now let's make **automatic alerts for any critical/error log.**
 /log error "CRITICAL TEST - alert email"
 ```
 
-/system script add name=telegram-alert-advanced source={
-  :local token "8426280608:AAEoK9JmcmJMTTro_6LnFd0jZcoEaWJcriw"
-  :local chatid "5916948751"
-  :local lastlog [/log get [/log find] message]
-  :local routername [/system identity get name]
-  :local msg ("ALERT from ".$routername.": ".$lastlog)
-  /tool fetch url=("https://api.telegram.org/bot".$token."/sendMessage?chat_id=".$chatid."&text=".$msg) keep-result=no
-
+Script صحيح كامل:
+```
+:global lastLogId
 
 :local token "8426280608:AAEoK9JmcmJMTTro_6LnFd0jZcoEaWJcriw"
 :local chatid "5916948751"
 
-:local token "BOT_TOKEN"
-:local chatid "CHAT_ID"
-:local count 0
-
 :foreach i in=[/log find where topics~"error"] do={
-  :set count ($count + 1)
+  :if ($i > $lastLogId) do={
+    :local msg [/log get $i message]
+    /tool fetch check-certificate=no \
+      url=("https://api.telegram.org/bot" . $token . "/sendMessage?chat_id=" . $chatid . "&text=" . $msg) \
+      keep-result=no
+    :set lastLogId $i
+  }
 }
+```
 
+⚠️ Token ديالك visible في screenshot — روح دابا لـ @BotFather وdir /revoke 🔴
 /tool fetch check-certificate=no url=("https://api.telegram.org/bot" . $token . "/sendMessage?chat_id=" . $chatid . "&text=Found_errors:" . $count) keep-result=no
