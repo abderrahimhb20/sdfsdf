@@ -934,3 +934,17 @@ Now let's make **automatic alerts for any critical/error log.**
   :local routername [/system identity get name]
   :local msg ("ALERT from ".$routername.": ".$lastlog)
   /tool fetch url=("https://api.telegram.org/bot".$token."/sendMessage?chat_id=".$chatid."&text=".$msg) keep-result=no
+
+
+:local token "8426280608:AAEoK9JmcmJMTTro_6LnFd0jZcoEaWJcriw"
+:local chatid "5916948751"
+
+:local routername [/system identity get name]
+
+:foreach i in=[/log find where topics~"error"] do={
+
+:local msg ("🚨 ALERT from " . $routername . "%0A" . [/log get $i message])
+
+/tool fetch url=("https://api.telegram.org/bot" . $token . "/sendMessage?chat_id=" . $chatid . "&text=" . $msg) keep-result=no
+
+}
