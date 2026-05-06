@@ -939,12 +939,12 @@ Now let's make **automatic alerts for any critical/error log.**
 :local token "8426280608:AAEoK9JmcmJMTTro_6LnFd0jZcoEaWJcriw"
 :local chatid "5916948751"
 
-:local routername [/system identity get name]
+:local token "BOT_TOKEN"
+:local chatid "CHAT_ID"
+:local count 0
 
 :foreach i in=[/log find where topics~"error"] do={
-
-:local msg ("🚨 ALERT from " . $routername . "%0A" . [/log get $i message])
-
-/tool fetch url=("https://api.telegram.org/bot" . $token . "/sendMessage?chat_id=" . $chatid . "&text=" . $msg) keep-result=no
-
+  :set count ($count + 1)
 }
+
+/tool fetch check-certificate=no url=("https://api.telegram.org/bot" . $token . "/sendMessage?chat_id=" . $chatid . "&text=Found_errors:" . $count) keep-result=no
