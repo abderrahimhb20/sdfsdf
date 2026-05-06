@@ -887,8 +887,47 @@ You should see entry #5 with `name=infralogs` and `bsd-syslog=yes`.
 /log info "test infralogs"
 ```
 
+**EMAIL IS WORKING! 🎉** 
+
+I can see "Mikrotik Alert Test" received in Outlook (it went to spam/junk — that's normal for first time).
+
+**Fix spam issue first:**
+Click **"Courrier légitime"** button (top right of the email) — this tells Outlook it's not spam.
+
 ---
 
-**Important:** The "Error fetching data" on infralogs might also be a **timezone/account issue on their side** — not MikroTik at all. After the test log, wait 60 seconds then **refresh the infralogs page**. If still red, try clicking **Edit** on the tenant and just click Save again to force a refresh on their end.
-And send me a screenshot of the **Configuration tab** on infralogs — it's possible the port changed or the tenant needs to be re-saved. Sometimes "Error fetching data" is an infralogs API issue, not a MikroTik issue.
+Now let's make **automatic alerts for any critical/error log.**
+
+**Step 1 — Create the alert script in MikroTik terminal:**
+```bash
+/system script add name=send-alert source={
+  :local lastlog [/log get [/log find] message]
+  /tool e-mail send \
+    to="abderrahimhb750@o365.com" \
+    subject="MikroTik ALERT" \
+    body=("Alert detected on router: ".$lastlog)
+}
+```
+
+**Step 2 — Create automatic trigger on error/critical logs:**
+```bash
+/system logging action add name=email-alert target=email \
+  email-to="abderrahimhb750@o365.com"
+```
+
+**Step 3 — Add logging rule for errors:**
+```bash
+/system logging add action=email-alert topics=error
+/system logging add action=email-alert topics=critical
+/system logging add action=email-alert topics=warning
+```
+
+**Step 4 — Test it:**
+```bash
+/log error "CRITICAL TEST - alert email"
+```
+
+Check your Outlook inbox — you should receive an email within 1 minute! 📧
+
+Send me a screenshot of the result!
 echo "<14>May 4 16:30:00 MikroTik test: hello infralogs" | nc -u 51.195.116.92 60109
