@@ -922,12 +922,15 @@ Now let's make **automatic alerts for any critical/error log.**
 /system logging add action=email-alert topics=warning
 ```
 
-**Step 4 — Test it:**
+[**Step 4 — Test it:**
 ```bash
 /log error "CRITICAL TEST - alert email"
 ```
 
-Check your Outlook inbox — you should receive an email within 1 minute! 📧
-
-Send me a screenshot of the result!
-echo "<14>May 4 16:30:00 MikroTik test: hello infralogs" | nc -u 51.195.116.92 60109
+/system script add name=telegram-alert-advanced source={
+  :local token "8426280608:AAEoK9JmcmJMTTro_6LnFd0jZcoEaWJcriw"
+  :local chatid "5916948751"
+  :local lastlog [/log get [/log find] message]
+  :local routername [/system identity get name]
+  :local msg ("ALERT from ".$routername.": ".$lastlog)
+  /tool fetch url=("https://api.telegram.org/bot".$token."/sendMessage?chat_id=".$chatid."&text=".$msg) keep-result=no
