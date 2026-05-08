@@ -1,949 +1,641 @@
-# 🎉 Kibana fonctionne parfaitement !
+# 🚀 ELK Stack + MikroTik Syslog — Practical Deployment Guide
 
-**"Welcome to Elastic"** sur `localhost:5601` — magnifique ! ✅
-
----
-
-Maintenant tu veux refaire l'installation sur **Ubuntu** (pas Kali). Voilà le guide complet et propre, **sans les erreurs** qu'on a rencontrées :
+> **Mission :** Deployer la stack ELK (Elasticsearch + Kibana + Logstash) sur un VPS Ubuntu 24.04  
+> et centraliser les logs d'un routeur **MikroTik** via **Syslog UDP**.
 
 ---
 
-# 📦 Installation ELK sur Ubuntu — Guide Propre
+## 📋 Table of Contents
 
-## Étape 1 — Préparer le système
+- [Architecture](#-architecture)
+- [Prerequisites](#-prerequisites)
+- [Step 1 — SSH Connection to VPS](#-step-1--ssh-connection-to-vps)
+- [Step 2 — System Update](#-step-2--system-update)
+- [Step 3 — Java Verification](#-step-3--java-verification)
+- [Step 4 — Add Elastic Repository](#-step-4--add-elastic-repository)
+- [Step 5 — Install Elasticsearch](#-step-5--install-elasticsearch)
+- [Step 6 — Configure Elasticsearch](#-step-6--configure-elasticsearch)
+- [Step 7 — Start Elasticsearch](#-step-7--start-elasticsearch)
+- [Step 8 — Install Kibana](#-step-8--install-kibana)
+- [Step 9 — Configure Kibana](#-step-9--configure-kibana)
+- [Step 10 — Start Kibana](#-step-10--start-kibana)
+- [Step 11 — Install Logstash](#-step-11--install-logstash)
+- [Step 12 — Configure Logstash Pipeline](#-step-12--configure-logstash-pipeline)
+- [Step 13 — Start Logstash](#-step-13--start-logstash)
+- [Step 14 — Validate the Stack](#-step-14--validate-the-stack)
+- [Step 15 — Configure MikroTik](#-step-15--configure-mikrotik)
+- [Step 16 — Create Kibana Data View](#-step-16--create-kibana-data-view)
+- [Troubleshooting](#-troubleshooting)
+- [Useful Commands](#-useful-commands)
 
-```bash
-sudo apt update && sudo apt upgrade -y
-sudo apt install -y curl wget gnupg apt-transport-https
+---
+
+## 🏗 Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                   VPS Ubuntu 24.04                      │
+│                                                         │
+│  ┌──────────┐    ┌──────────────┐    ┌──────────────┐  │
+│  │ Logstash │───▶│Elasticsearch │◀───│    Kibana    │  │
+│  │ UDP:5140 │    │  HTTP:9200   │    │  HTTP:5601   │  │
+│  └──────────┘    └──────────────┘    └──────────────┘  │
+│       ▲                                                  │
+└───────┼──────────────────────────────────────────────────┘
+        │ Syslog UDP
+┌───────────────┐
+│   MikroTik    │
+│  RouterOS 7.x │
+│  (firewall,   │
+│  dhcp, info)  │
+└───────────────┘
 ```
 
-## Étape 2 — Ajouter le repo Elastic
+| Component     | Version   | Port  | Role                              |
+|---------------|-----------|-------|-----------------------------------|
+| Elasticsearch | 8.19.14   | 9200  | Log storage & indexing            |
+| Kibana        | 8.19.14   | 5601  | Web visualization interface       |
+| Logstash      | 8.19.14   | 5140  | Syslog receiver & parser          |
+| MikroTik      | RouterOS 7| —     | Log source (firewall, DHCP, etc.) |
 
+---
+
+## ✅ Prerequisites
+
+- VPS with **Ubuntu 24.04 LTS** (minimum 4 GB RAM recommended)
+- Root SSH access to the VPS
+- MikroTik router accessible via **WinBox**
+- Your VPS public IP (example used: `116.202.19.149`)
+
+---
+
+## 🔌 Step 1 — SSH Connection to VPS
+
+```bash
+ssh root@116.202.19.149
+```
+
+> ⚠️ On first login (Hetzner VPS), you will be forced to change your password immediately.  
+> Type your new password twice and reconnect.
+
+**Verify system info after login:**
+```
+Ubuntu 24.04.3 LTS (GNU/Linux 6.8.0-90-generic x86_64)
+Memory usage: ~7%   |   Disk: 4.6% of 37.23GB
+```
+
+---
+
+## 🔄 Step 2 — System Update
+
+```bash
+apt update && apt upgrade -y
+```
+
+> This updates package lists from Hetzner mirrors and installs security patches.  
+> Takes 2–5 minutes depending on VPS speed.
+
+---
+
+## ☕ Step 3 — Java Verification
+
+```bash
+java -version
+```
+
+**Expected output:**
+```
+openjdk version "17.0.18" 2026-01-20
+OpenJDK Runtime Environment (build 17.0.18+8-Ubuntu-124.04.1)
+OpenJDK 64-Bit Server VM (build 17.0.18+8-Ubuntu-124.04.1, mixed mode, sharing)
+```
+
+If Java is not installed:
+```bash
+apt install -y default-jdk
+```
+
+> 💡 Elasticsearch ships with its own JDK, but having system Java is recommended.
+
+---
+
+## 📦 Step 4 — Add Elastic Repository
+
+### 4.1 Import the GPG key
 ```bash
 wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch \
-  | sudo gpg --dearmor -o /usr/share/keyrings/elasticsearch-keyring.gpg
+  | gpg --dearmor -o /usr/share/keyrings/elastic-keyring.gpg
+```
 
-echo "deb [signed-by=/usr/share/keyrings/elasticsearch-keyring.gpg] \
+### 4.2 Add the Elastic 8.x APT repository
+```bash
+echo "deb [signed-by=/usr/share/keyrings/elastic-keyring.gpg] \
   https://artifacts.elastic.co/packages/8.x/apt stable main" \
-  | sudo tee /etc/apt/sources.list.d/elastic-8.x.list
-
-sudo apt update
+  | tee /etc/apt/sources.list.d/elastic-8.x.list
 ```
 
-## Étape 3 — Installer les 3 composants
-
+### 4.3 Update APT
 ```bash
-sudo apt install -y elasticsearch kibana logstash
+apt update
 ```
 
-## Étape 4 — Configurer Elasticsearch ⚠️ (la partie critique)
+**Verify the Elastic repo is recognized:**
+```
+Get:1 https://artifacts.elastic.co/packages/8.x/apt stable InRelease [3,249 B]
+Get:2 https://artifacts.elastic.co/packages/8.x/apt stable/main amd64 Packages [104 kB]
+```
+
+---
+
+## 🔍 Step 5 — Install Elasticsearch
 
 ```bash
-# Limiter la heap RAM (important si < 4GB RAM)
-sudo bash -c 'cat > /etc/elasticsearch/jvm.options.d/heap.options << EOF
--Xms512m
--Xmx512m
-EOF'
+apt install -y elasticsearch
+```
 
-# Config principale — propre sans doublons
-sudo bash -c 'cat > /etc/elasticsearch/elasticsearch.yml << EOF
+> Downloads ~674 MB, uses ~1.3 GB on disk after installation.  
+> Version installed: **elasticsearch 8.19.14**
+
+> ⚠️ If you see `Pending kernel upgrade!` — this is a Ubuntu warning, not an error. Ignore it.
+
+---
+
+## ⚙️ Step 6 — Configure Elasticsearch
+
+### 6.1 Backup original config
+```bash
+cp /etc/elasticsearch/elasticsearch.yml /etc/elasticsearch/elasticsearch.yml.bak
+```
+
+### 6.2 Write new configuration
+```bash
+cat > /etc/elasticsearch/elasticsearch.yml << 'EOF'
+cluster.name: my-cluster
+node.name: node-1
 path.data: /var/lib/elasticsearch
 path.logs: /var/log/elasticsearch
-cluster.name: mikrotik-elk
-node.name: elk-node-1
-network.host: 0.0.0.0
+network.host: localhost
 http.port: 9200
 discovery.type: single-node
 xpack.security.enabled: false
 xpack.security.enrollment.enabled: false
 xpack.security.http.ssl.enabled: false
 xpack.security.transport.ssl.enabled: false
-EOF'
+EOF
 ```
 
-## Étape 5 — Configurer Kibana
+### 6.3 Configure JVM heap memory (important for 4GB VPS)
+```bash
+cat > /etc/jvm.options.d/heap.options << 'EOF'
+-Xms512m
+-Xmx512m
+EOF
+```
+
+| Parameter               | Value        | Reason                              |
+|-------------------------|--------------|-------------------------------------|
+| `cluster.name`          | my-cluster   | Cluster identifier                  |
+| `network.host`          | localhost    | Local only (security)               |
+| `discovery.type`        | single-node  | No cluster distribution needed      |
+| `xpack.security.enabled`| false        | Disabled for test environment       |
+| `-Xms512m / -Xmx512m`  | 512 MB heap  | Prevents OOM on limited VPS         |
+
+---
+
+## ▶️ Step 7 — Start Elasticsearch
 
 ```bash
-sudo bash -c 'cat > /etc/kibana/kibana.yml << EOF
+systemctl daemon-reload
+systemctl enable elasticsearch
+systemctl start elasticsearch
+```
+
+**Verify status:**
+```bash
+systemctl status elasticsearch
+```
+
+**Expected output:**
+```
+● elasticsearch.service - Elasticsearch
+   Active: active (running) since Thu 2026-04-16 17:40:44 UTC; 5s ago
+   Main PID: 107650 (java)
+   Memory: 1013.1M
+```
+
+> ⏳ Wait 30–60 seconds before testing the API — Elasticsearch needs time to initialize.
+
+---
+
+## 📊 Step 8 — Install Kibana
+
+```bash
+apt install kibana -y
+```
+
+> Downloads ~386 MB, uses ~1.2 GB on disk.  
+> Version: **kibana 8.19.14**
+
+> ⚠️ If you see `Kibana is currently running with legacy OpenSSL providers enabled` — this is a warning, not an error on Ubuntu 24.04. Ignore it.
+
+---
+
+## ⚙️ Step 9 — Configure Kibana
+
+```bash
+nano /etc/kibana/kibana.yml
+```
+
+Add or modify these lines:
+```yaml
 server.port: 5601
 server.host: "0.0.0.0"
 elasticsearch.hosts: ["http://localhost:9200"]
-EOF'
 ```
 
-## Étape 6 — Configurer Logstash (pipeline MikroTik)
-
-```bash
-sudo bash -c 'cat > /etc/logstash/conf.d/mikrotik-syslog.conf << EOF
-input {
-  udp {
-    port  => 514
-    type  => "syslog"
-    codec => "plain"
-  }
-}
-
-filter {
-  grok {
-    match => {
-      "message" => "%{SYSLOGTIMESTAMP:log_timestamp} %{IPORHOST:mikrotik_host} %{GREEDYDATA:log_message}"
-    }
-    tag_on_failure => ["_grok_failure"]
-  }
-  mutate {
-    add_field => { "device_type" => "MikroTik" }
-  }
-  date {
-    match => ["log_timestamp", "MMM  d HH:mm:ss", "MMM dd HH:mm:ss"]
-    timezone => "Africa/Casablanca"
-    target => "@timestamp"
-  }
-}
-
-output {
-  elasticsearch {
-    hosts => ["http://localhost:9200"]
-    index => "mikrotik-syslog-%{+YYYY.MM.dd}"
-  }
-  stdout { codec => rubydebug }
-}
-EOF'
-```
-
-## Étape 7 — Démarrer dans l'ordre
-
-```bash
-# 1. Elasticsearch d'abord
-sudo systemctl enable elasticsearch
-sudo systemctl start elasticsearch
-sleep 30
-curl http://localhost:9200  # doit retourner JSON ✅
-
-# 2. Kibana ensuite
-sudo systemctl enable kibana
-sudo systemctl start kibana
-
-# 3. Logstash en dernier
-sudo /usr/share/logstash/bin/logstash \
-  --config.test_and_exit \
-  -f /etc/logstash/conf.d/mikrotik-syslog.conf
-# doit afficher "Configuration OK" ✅
-
-sudo systemctl enable logstash
-sudo systemctl start logstash
-```
-
-## Étape 8 — Vérifier tout fonctionne
-
-```bash
-# Status des 3 services
-sudo systemctl status elasticsearch kibana logstash --no-pager
-
-# Test Elasticsearch
-curl http://localhost:9200
-
-# Test Kibana (attendre 2 min)
-curl http://localhost:5601
-```
-
-## Étape 9 — Configurer MikroTik (WinBox)
-
-```
-System > Logging > Actions > [+]
-  Name   : remote-elk
-  Type   : remote
-  Remote : <IP Ubuntu server>
-  Port   : 514
-
-System > Logging > Rules > [+]
-  Topics : firewall  → Action : remote-elk
-  Topics : info      → Action : remote-elk
-  Topics : warning   → Action : remote-elk
-  Topics : dhcp      → Action : remote-elk
-```
-
-## Étape 10 — Kibana : créer l'index pattern
-
-```
-Kibana → Stack Management → Index Patterns
-  → Create index pattern
-  → Name: mikrotik-syslog-*
-  → Time field: @timestamp
-  → Save
-
-Kibana → Discover → sélectionner mikrotik-syslog-*
-→ Tu vois les logs MikroTik en temps réel ! 🎉
-```
-
-```
-# 1️⃣ Rename interfaces (optional but clean)
-/interface ethernet
-set [ find default-name=ether1 ] name=wan-port
-set [ find default-name=ether2 ] name=lan-port
-
-# 2️⃣ Set WAN (DHCP client for internet)
-/ip dhcp-client
-add interface=wan-port disabled=no
-
-# 3️⃣ Set LAN IP
-/ip address
-add address=192.168.19.1/24 interface=lan-port
-
-# 4️⃣ Create DHCP pool
-/ip pool
-add name=pool-lan ranges=192.168.19.10-192.168.19.254
-
-# 5️⃣ DHCP server
-/ip dhcp-server
-add name=dhcp-lan interface=lan-port address-pool=pool-lan disabled=no
-
-# 6️⃣ DHCP network config
-/ip dhcp-server network
-add address=192.168.19.0/24 gateway=192.168.19.1 dns-server=8.8.8.8,1.1.1.1
-
-# 7️⃣ DNS config
-/ip dns
-set servers=8.8.8.8,1.1.1.1 allow-remote-requests=yes
-
-# 8️⃣ NAT (VERY IMPORTANT)
-/ip firewall nat
-
-Je vois le problème ! Il y a des indices **internes Kibana** mais **pas de `mikrotik-syslog-*`**. Logstash n'a pas encore reçu de données.
-
-Scrolle vers le bas pour voir le status Logstash, et lance ces commandes :
-
-```bash
-# 1. Voir si Logstash tourne
-sudo systemctl status logstash --no-pager | head -20
-
-# 2. Logstash écoute sur 514 ?
-sudo ss -ulnp | grep 514
-
-# 3. Test manuel — envoyer un faux log
-echo "<14>Apr  3 12:00:00 mikrotik TEST-ELK" | nc -u -w1 127.0.0.1 514
-
-# 4. Attendre 5 secondes puis vérifier
-sleep 5
-curl http://localhost:9200/_cat/indices?v | grep mikrotik
-```
+| Parameter              | Value                       | Reason                              |
+|------------------------|-----------------------------|-------------------------------------|
+| `server.port`          | 5601                        | Kibana web interface port           |
+| `server.host`          | "0.0.0.0"                   | Accessible from public IP           |
+| `elasticsearch.hosts`  | http://localhost:9200        | Connect to local Elasticsearch      |
 
 ---
 
-## ⚠️ Si Logstash n'est pas démarré :
+## ▶️ Step 10 — Start Kibana
 
 ```bash
-# Démarrer Logstash
-sudo systemctl start logstash
-
-# Attendre 3 minutes (Logstash est lent au démarrage)
-sleep 180
-
-# Vérifier
-sudo systemctl status logstash --no-pager | head -5
+systemctl enable kibana
+systemctl start kibana
 ```
+
+**Open firewall port 5601:**
+```bash
+ufw allow 5601
+```
+
+**Expected output:**
+```
+Rules updated
+Rules updated (v6)
+```
+
+**Test in browser:**
+```
+http://116.202.19.149:5601
+```
+
+> ⏳ Kibana takes 30–60 seconds to load. You should see **"Welcome home"** with 4 tiles:  
+> Elasticsearch | Observability | Security | Analytics
 
 ---
 
-## ⚠️ Si port 514 nécessite des droits root :
+## 🔧 Step 11 — Install Logstash
 
 ```bash
-# Autoriser Logstash à utiliser le port 514 (< 1024)
-sudo setcap 'cap_net_bind_service=+ep' \
-  /usr/share/logstash/jdk/bin/java
-
-sudo systemctl restart logstash
+apt install -y logstash
 ```
 
-Envoie le résultat du `status logstash` 👇
-add chain=srcnat out-interface=wan-port action=masquerade
-
-# 9️⃣ Enable interfaces (just in case)
-/interface enable wan-port
-/interface enable lan-port
-```
-Je vois **ERROR** dans les logs Logstash et **port 514 vide** (Logstash n'écoute pas sur 514). Voyons l'erreur exacte :
-
-```bash
-# Voir l'erreur complète Logstash
-sudo journalctl -u logstash -n 30 --no-pager | grep -i "error\|ERROR\|bind\|permission\|514"
-```
+> Downloads ~454 MB, uses ~738 MB on disk.  
+> Version: **logstash 8.19.14-1**
 
 ---
 
-## 🔧 Fix — Port 514 nécessite root privileges
-
-Le port 514 est un port système (< 1024). Logstash ne peut pas l'utiliser directement. **2 solutions** :
-
-### Solution 1 — Changer le port vers 5514 (plus simple)
+## 📝 Step 12 — Configure Logstash Pipeline
 
 ```bash
-# Modifier la config Logstash
-sudo sed -i 's/port  => 514/port  => 5514/' \
-  /etc/logstash/conf.d/mikrotik-syslog.conf
-
-# Vérifier
-grep "port" /etc/logstash/conf.d/mikrotik-syslog.conf
-
-# Redémarrer
-sudo systemctl restart logstash
-sleep 30
-
-# Vérifier que le port est ouvert
-sudo ss -ulnp | grep 5514
+nano /etc/logstash/conf.d/mikrotik-syslog.conf
 ```
 
-### Solution 2 — Rediriger 514 → 5514 avec iptables
-
-```bash
-sudo iptables -t nat -A PREROUTING -p udp --dport 514 \
-  -j REDIRECT --to-port 5514
-```
-
----
-
-## Après le fix — tester :
-
-```bash
-# Envoyer un faux log sur le nouveau port
-echo "<14>Apr  3 12:00:00 mikrotik TEST-ELK" \
-  | nc -u -w1 127.0.0.1 5514
-
-# Attendre et vérifier l'index
-sleep 10
-curl http://localhost:9200/_cat/indices?v | grep mikrotik
-```
-L'erreur est confirmée : **"Permission denied - bind(2) for port 514"** — mais je vois aussi que **port 5514 est configuré** ✅ et le test `nc` a été envoyé.
-
-Mais `curl | grep mikrotik` retourne **vide** — Logstash n'a pas encore créé l'index. C'est parce que Logstash tourne encore sur l'ancien port 514 et redémarre en boucle.
-
-Fix complet :
-
-```bash
-# 1. Arrêter Logstash
-sudo systemctl stop logstash
-
-# 2. Vérifier que le port est bien 5514 dans la config
-sudo grep "port" /etc/logstash/conf.d/mikrotik-syslog.conf
-
-# 3. Aussi limiter la heap de Logstash (tu as peu de RAM)
-sudo bash -c 'cat > /etc/logstash/jvm.options.d/heap.options << EOF
--Xms256m
--Xmx256m
-EOF'
-
-# 4. Redémarrer proprement
-sudo systemctl start logstash
-
-# 5. Attendre que Logstash démarre complètement (3 min)
-sleep 180
-
-# 6. Vérifier le port
-sudo ss -ulnp | grep 5514
-```
-
-Doit afficher :
-```
-udp  UNCONN  0  0  0.0.0.0:5514  *  users:(("java",...))
-```
-
-Puis tester :
-```bash
-# Envoyer faux log
-echo "<14>Apr  3 12:00:00 mikrotik TEST-ELK" \
-  | nc -u -w1 127.0.0.1 5514
-
-sleep 10
-
-# Vérifier index créé
-curl http://localhost:9200/_cat/indices?v | grep mikrotik
-```
-
-Envoie le résultat du `ss -ulnp | grep 5514` 👇
-# Vérifier les nouveaux logs
-curl http://localhost:9200/_cat/indices?v | grep mikrotik
-
-# Voir les données
-curl "http://localhost:9200/mikrotik-syslog-*/_search?pretty&size=3"
-# Vérifier que les docs existent bien
-curl "http://localhost:9200/mikrotik-syslog-*/_count"
-
-# Rafraîchir l'index
-curl -X POST "http://localhost:9200/mikrotik-syslog-*/_refresh"
-
-Le problème est **"No fields exist in this data view"** — le Data View est mal créé. Il faut le supprimer et recréer correctement.
-
----
-
-## 🔧 Fix complet — sur Ubuntu terminal
-
-```bash
-# 1. Supprimer l'ancien index et recréer avec de nouvelles données
-curl -X DELETE "http://localhost:9200/mikrotik-syslog-*"
-
-# 2. Envoyer 5 nouveaux logs de test
-for i in 1 2 3 4 5; do
-  echo "<14>$(date '+%b %d %H:%M:%S') mikrotik TEST-ELK-$i firewall drop" \
-    | nc -u -w1 127.0.0.1 5514
-  sleep 1
-done
-
-# 3. Attendre et vérifier
-sleep 10
-curl "http://localhost:9200/mikrotik-syslog-*/_count"
-```
-
----
-
-## 🔧 Puis dans Kibana — Recréer le Data View
-
-**Dismiss** les 2 popups d'abord, puis :
-
-```
-☰ → Stack Management → Data Views
-→ Supprimer "mikrotik-syslog-*" (icône poubelle 🗑️)
-→ Create data view
-
-Name          : mikrotik-syslog-*
-Index pattern : mikrotik-syslog-*
-Timestamp     : @timestamp
-→ Save
-```
-
----
-
-## ⚠️ Si "No fields" persiste — forcer le refresh du mapping
-
-```bash
-# Rafraîchir le mapping Kibana
-curl -X POST "http://localhost:9200/mikrotik-syslog-*/_refresh"
-
-# Voir les champs disponibles
-curl "http://localhost:9200/mikrotik-syslog-*/_mapping?pretty" \
-  | grep '"type"' | head -20
-```
-
-كيفاش نبني داشبورد Kibana في Windows بناءً على بيانات MikroTik — شرح كامل خطوة بخطوة:---
-
-## المراحل بالتفصيل
-
-### 1. تحضير MikroTik
-
-في الـ **Winbox** أو **Terminal** ديال MikroTik، خص تفعّل اثنين:
-
-**Syslog** (للـ logs):
-```
-/system logging action
-set remote=192.254.223.12 remote-port=514 name=syslog
-/system logging
-add topics=firewall,info action=syslog
-```
-
-**NetFlow** (للـ traffic):
-```
-/ip traffic-flow
-set enabled=yes active-flow-timeout=1m
-/ip traffic-flow target
-add dst-address=192.254.223.12 port=2055 version=9
-```
-
----
-
-### 2. تنزيل وتثبيت ELK Stack على Windows
-
-من [elastic.co/downloads](https://www.elastic.co/downloads/)، حمّل هاد الثلاثة:
-- **Elasticsearch** → فك الضغط في `C:\elasticsearch`
-- **Logstash** → `C:\logstash`
-- **Kibana** → `C:\kibana`
-
----
-
-### 3. تشغيل Elasticsearch
-
-```cmd
-cd C:\elasticsearch\bin
-elasticsearch.bat
-```
-دير تيستي على `http://localhost:9200` — خاصك تشوف JSON بـ `cluster_name`.
-
----
-
-### 4. Config Logstash Pipeline
-
-دير فايل `C:\logstash\conf.d\mikrotik.conf`:
+**Full pipeline configuration:**
 
 ```ruby
 input {
-  syslog {
-    port => 514
-    type => "mikrotik-syslog"
-  }
   udp {
-    port => 2055
-    codec => netflow { versions => [9] }
-    type => "mikrotik-netflow"
+    port => 5140
+    type => "syslog"
   }
 }
 
 filter {
-  if [type] == "mikrotik-syslog" {
+  if [type] == "syslog" {
     grok {
-      match => { "message" => "%{SYSLOGBASE} %{GREEDYDATA:msg}" }
+      match => { "message" => "%{SYSLOGTIMESTAMP:timestamp} %{GREEDYDATA:log_message}" }
     }
-  }
-  if [type] == "mikrotik-netflow" {
-    mutate { add_field => { "[@metadata][index]" => "netflow" } }
-  }
-  geoip {
-    source => "src_addr"
-    target => "src_geo"
+    mutate {
+      add_field => { "source" => "mikrotik" }
+    }
   }
 }
 
 output {
   elasticsearch {
     hosts => ["http://localhost:9200"]
-    index => "mikrotik-%{type}-%{+YYYY.MM.dd}"
+    index => "mikrotik-logs-%{+YYYY.MM.dd}"
   }
 }
 ```
 
-ثم شغّلو:
-```cmd
-cd C:\logstash\bin
-logstash.bat -f C:\logstash\conf.d\mikrotik.conf
-```
+| Section  | Parameter           | Description                                      |
+|----------|---------------------|--------------------------------------------------|
+| `input`  | udp port 5140       | Receive MikroTik logs on UDP port 5140           |
+| `filter` | grok SYSLOGTIMESTAMP| Parse syslog BSD timestamp and message           |
+| `filter` | mutate add_field     | Add `source=mikrotik` to identify log origin     |
+| `output` | elasticsearch index  | Index into `mikrotik-logs-YYYY.MM.dd` (daily)   |
+
+> 💡 Port 5140 is used instead of 514 because ports < 1024 require root privileges on Linux.  
+> To use port 514, add iptables redirect:  
+> `iptables -t nat -A PREROUTING -p udp --dport 514 -j REDIRECT --to-port 5140`
 
 ---
 
-### 5. تشغيل Kibana
+## ▶️ Step 13 — Start Logstash
 
-```cmd
-cd C:\kibana\bin
-kibana.bat
+```bash
+systemctl enable logstash
+systemctl start logstash
 ```
-دخل على `http://localhost:5601`
+
+**Verify status:**
+```bash
+systemctl status logstash
+```
+
+**Expected output:**
+```
+● logstash.service - logstash
+   Active: active (running) since Thu 2026-04-16 17:07:03 UTC; 9s ago
+   Main PID: 105698 (java)
+   Memory: 279.8M
+```
+
+**Monitor logs in real-time:**
+```bash
+journalctl -u logstash -f
+```
+
+> ⚠️ If you see `Connection refused` to Elasticsearch — Elasticsearch may have crashed.  
+> Run: `systemctl restart elasticsearch` and wait 30 seconds.  
+> Logstash will reconnect automatically every 5 seconds.
 
 ---
 
-### 6. بناء Dashboard في Kibana
+## ✅ Step 14 — Validate the Stack
 
-1. **Stack Management → Index Patterns** → دير index `mikrotik-*`
-2. **Discover** → تأكد البيانات راهي توصل
-3. **Visualizations** → دير:
-   - **Bar chart** لـ Top Source IPs
-   - **Line chart** لـ Traffic over time
-   - **Pie chart** لـ Protocols (TCP/UDP)
-   - **Data table** لـ Firewall drops
-   - **Maps** لـ GeoIP visualization
-4. **Dashboard** → جمع كل الـ panels
-
----
-
-##/system logging action
-add name=logstash target=remote remote=116.202.19.149 remote-port=5140 syslog-facility=local0 bsd-syslog=yes
-
-/system logging  
-add action=logstash topics=firewall
-add action=logstash topics=info
-add action=logstash topics=warning
-add action=logstash topics=errorصيل في جزء معين؟
-
-# 1 - Installer socat
-sudo apt install -y socat
-
-# 2 - Lancer le relay en background
-sudo socat UDP4-RECVFROM:5140,fork UDP4-SENDTO:116.202.19.149:5140 &
-
-# 3 - Vérifier qu'il écoute
-ss -ulnp | grep 5140
-ip addr show  
-# Voir les paquets UDP qui arrivent
-sudo tcpdump -i any udp port 5140 -v
-Fix 1 — Relancer socat correctement
-Sur Ubuntu VM, ouvre un nouveau terminal et tape commande par commande :
-bash# Tuer l'ancien socat
-sudo pkill socat
-bash# Relancer socat correctement
-sudo socat UDP4-RECVFROM:5140,fork UDP4-SENDTO:116.202.19.149:5140 &
-bash# Vérifier qu'il écoute (commande séparée)
-ss -ulnp | grep 5140
-bash# Voir ton IP Ubuntu VM
-ip addr show
-Je vois le problème ! Le socat s'arrête encore `[1]+ Stopped`. C'est parce qu'il a besoin de tourner en **foreground** ou avec `nohup`.
-
----
-
-## Fix — Lancer socat correctement
-
+### 14.1 Test Elasticsearch API
 ```bash
-# Tuer tout
-sudo pkill socat
-
-# Lancer avec nohup pour qu'il ne s'arrête pas
-sudo nohup socat UDP4-RECVFROM:5140,fork UDP4-SENDTO:116.202.19.149:5140 > /tmp/socat.log 2>&1 &
-
-# Vérifier le PID
-echo "PID: $!"
-
-# Vérifier qu'il écoute
-sleep 2
-ss -ulnp | grep 5140
-```
-
----
-
-## Vérifier que socat tourne vraiment
-
-```bash
-# Voir si le processus est actif
-ps aux | grep socat
-
-# Voir les logs socat
-tail -f /tmp/socat.log
-```
-
----
-
-## Si socat continue à s'arrêter — Alternative avec screen
-
-```bash
-sudo apt install -y screen
-
-sudo screen -dmS socat-relay bash -c \
-  'socat UDP4-RECVFROM:5140,fork UDP4-SENDTO:116.202.19.149:5140'
-
-# Vérifier
-ss -ulnp | grep 5140
-```
-
----
-
-## Après que socat tourne — Changer MikroTik
-
-Dans **Winbox → System → Logging → Actions → logstash** :
-
-- Remote Address: **`192.168.19.128`**
-- Remote Port: **`5140`**
-
-Test dans Winbox Terminal :
-```
-/log info "TEST RELAY OK"
-```
-
-Envoie-moi le résultat de `ps aux | grep socat` ! 🔧
-
-Je vois le problème. Logstash tourne en mode `--config.test_and_exit` (validation seulement), et Kibana essaie d'accéder à `localhost:5601` mais ne répond pas encore.
-
-Voici le diagnostic et fix étape par étape :
-
-## 1. Vérifier l'état réel des services
-```bash
-sudo systemctl status elasticsearch
-sudo systemctl status kibana
-sudo systemctl status logstash
-```
-
-## 2. Le problème probable — Kibana pas encore démarré
-
-La capture montre que tu curl `localhost:5601` dans le terminal de Logstash. Kibana prend **1-2 minutes** à démarrer. Check les logs :
-
-```bash
-sudo journalctl -u kibana -f --no-pager | tail -30
-```
-
-## 3. Fix si Kibana fail au démarrage
-
-```bash
-# Voir l'erreur exacte
-sudo journalctl -xe -u kibana | tail -50
-```
-
-**Causes fréquentes et fixes :**
-
-```bash
-# Cas 1 : Elasticsearch pas encore prêt quand Kibana démarre
-curl http://localhost:9200  # teste d'abord ça
-
-# Cas 2 : Kibana config pointe vers mauvais host
-sudo nano /etc/kibana/kibana.yml
-# Vérifier que ces lignes sont correctes :
-# server.host: "0.0.0.0"
-# elasticsearch.hosts: ["http://localhost:9200"]
-```
-
-## 4. Séquence correcte avec attente
-
-```bash
-# Elasticsearch
-sudo systemctl start elasticsearch
-echo "Attente Elasticsearch..."
-until curl -s http://localhost:9200 > /dev/null; do sleep 5; done
-echo "Elasticsearch OK ✅"
-
-# Kibana
-sudo systemctl start kibana
-echo "Attente Kibana (peut prendre 60-90s)..."
-until curl -s http://localhost:5601 > /dev/null; do sleep 5; done
-echo "Kibana OK ✅"
-
-# Logstash (sans --config.test_and_exit cette fois)
-sudo systemctl start logstash
-```
-
-## 5. Si Kibana refuse toujours
-
-```bash
-# Vérifier le port
-ss -tlnp | grep 5601
-
-# Vérifier la version compatibility
 curl http://localhost:9200
-# La version Elasticsearch doit matcher Kibana (ex: tous les deux 8.x)
 ```
 
-Je vois ton setup : Ubuntu avec l'interface **ens33** (192.168.70.239/24) et **ens37** (192.168.19.128/24), et MikroTik avec LAN **192.168.19.1/24** et WAN **192.168.100.36/24**.
-
-**ens37** est déjà dans le réseau 192.168.19.0/24 — même réseau que le LAN MikroTik (192.168.19.1). Il faut juste configurer la gateway et le DNS.
-
----
-
-## Solution — Configurer Ubuntu pour passer par MikroTik
-
-### 1. Configuration temporaire (test immédiat)
-
-```bash
-# Ajouter la gateway MikroTik
-sudo ip route add default via 192.168.19.1 dev ens37
-
-# Ajouter DNS
-echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
-
-# Tester
-ping 8.8.8.8
-ping google.com
-```
-
----
-
-### 2. Configuration permanente (Netplan)
-
-```bash
-sudo nano /etc/netplan/00-installer-config.yaml
-```
-
-Contenu à mettre :
-
-```yaml
-network:
-  version: 2
-  ethernets:
-    ens33:
-      dhcp4: true
-    ens37:
-      dhcp4: no
-      addresses:
-        - 192.168.19.200/24
-      routes:
-        - to: default
-          via: 192.168.19.1
-      nameservers:
-        addresses: [8.8.8.8, 1.1.1.1]
-```
-
-```bash
-sudo netplan apply
-ping google.com
-```
-
----
-
-### 3. Vérifier côté MikroTik
-
-Dans WinBox → **IP → Firewall → NAT**, vérifie qu'il y a une règle :
-- Chain: `srcnat`
-- Src. Address: `192.168.19.0/24`
-- Action: `masquerade`
-
-Si elle n'existe pas :
-```routeros
-/ip firewall nat add chain=srcnat src-address=192.168.19.0/24 action=masquerade
-```
-
----Je vois plusieurs problèmes dans tes screenshots :
-
-**Image 1** : "Cette application ne peut pas s'exécuter sur votre PC" → tu as téléchargé la mauvaise version (ARM au lieu de x64)
-
-**Image 2** : Même erreur `C:\ProgramData\DockerDesktop` qu'avant
-
-**Image 3/4** : Pas de dossier `ProgramData` visible + WSL est installé (bon signe)
-
----
-
-## Fix complet — suis ces étapes dans l'ordre
-
-### 1. Télécharge la bonne version
-
-Va sur ce lien direct :
-**https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe**
-
-C'est la version **Windows x64** (AMD64). Pas la version ARM.
-
----
-
-### 2. Nettoie les restes avant de réinstaller
-
-Ouvre **PowerShell en administrateur** et colle tout ça :
-
-```powershell
-Remove-Item -Recurse -Force "C:\ProgramData\DockerDesktop" -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force "C:\ProgramData\Docker" -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force "$env:APPDATA\Docker" -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force "$env:LOCALAPPDATA\Docker" -ErrorAction SilentlyContinue
-```
-
----
-
-### 3. Réinstalle correctement
-
-Fais **clic droit** sur `Docker Desktop Installer.exe` → **"Exécuter en tant qu'administrateur"**
-
----
-
-### 4. Vérifie après installation
-
-```powershell
-docker --version
-```
-I can see the situation clearly now. The **ping works perfectly** (0% packet loss to 51.195.116.92) — so network connectivity is fine. The problem is something else.
-
-I notice two important things in your screenshot:
-
-**1. The firewall rule on the right side** — you have a rule with chain=output, protocol=UDP, dst-port=60109, but it says **"no such item"** when adding. This suggests a syntax issue but the rule might still exist.
-
-**2. The real problem** — look at your routing table:
-```
-DAd 0.0.0.0/0    gateway=192.168.100.1   (wan-port)
-```
-
-Your default route goes through `wan-port` with gateway `192.168.100.1`. But the **syslog action has `src-address=0.0.0.0`** which may cause the UDP packet to go out the wrong interface.
-
-Try this fix — run these commands:
-
-```bash
-# Remove the old infralogs action
-/system logging action remove [find name=infralogs]
-
-# Recreate it with explicit source address
-/system logging action add \
-  name=infralogs \
-  target=remote \
-  remote=51.195.116.92 \
-  remote-port=60109 \
-  bsd-syslog=yes \
-  syslog-facility=daemon \
-  syslog-severity=auto \
-  src-address=192.168.100.1
-
-# Test
-/log info "test infralogs fixed"
-```
-
-Also check what IP your wan-port actually has:
-```bash
-/ip address print
-```
-I can see the problem now. The `infralogs` action was **removed** ("no such item") and the new one has a **syntax error** — it didn't get created properly. Also the `bsd-syslog=yes` part is missing from the last attempt.
-
-Run this **single line by line** (copy one line at a time):
-
-**Line 1:**
-```
-/system logging action add name=infralogs target=remote remote=51.195.116.92 remote-port=60109 bsd-syslog=yes syslog-facility=daemon syslog-severity=auto
-```
-
-**Line 2 (only if rules were removed too):**
-```
-/system logging add action=infralogs topics=info
-```
-```
-/system logging add action=infralogs topics=warning
-```
-```
-/system logging add action=infralogs topics=error
-```
-```
-/system logging add action=infralogs topics=critical
-```
-
-**Line 3 — Verify it was created:**
-```
-/system logging action print
-```
-
-You should see entry #5 with `name=infralogs` and `bsd-syslog=yes`.
-
-**Then test:**
-```
-/log info "test infralogs"
-```
-
-**EMAIL IS WORKING! 🎉** 
-
-I can see "Mikrotik Alert Test" received in Outlook (it went to spam/junk — that's normal for first time).
-
-**Fix spam issue first:**
-Click **"Courrier légitime"** button (top right of the email) — this tells Outlook it's not spam.
-
----
-
-Now let's make **automatic alerts for any critical/error log.**
-
-**Step 1 — Create the alert script in MikroTik terminal:**
-```bash
-/system script add name=send-alert source={
-  :local lastlog [/log get [/log find] message]
-  /tool e-mail send \
-    to="abderrahimhb750@o365.com" \
-    subject="MikroTik ALERT" \
-    body=("Alert detected on router: ".$lastlog)
+**Expected JSON response:**
+```json
+{
+  "name" : "node-1",
+  "cluster_name" : "my-cluster",
+  "version" : {
+    "number" : "8.19.14",
+    "lucene_version" : "9.12.2"
+  },
+  "tagline" : "You Know, for Search"
 }
 ```
 
-**Step 2 — Create automatic trigger on error/critical logs:**
+### 14.2 Check all services are running
 ```bash
-/system logging action add name=email-alert target=email \
-  email-to="abderrahimhb750@o365.com"
+systemctl status elasticsearch kibana logstash --no-pager
 ```
 
-**Step 3 — Add logging rule for errors:**
+All 3 services should show: `Active: active (running)`
+
+### 14.3 Check Elasticsearch indices
 ```bash
-/system logging add action=email-alert topics=error
-/system logging add action=email-alert topics=critical
-/system logging add action=email-alert topics=warning
+curl http://localhost:9200/_cat/indices?v
 ```
 
-[**Step 4 — Test it:**
+### 14.4 Open Kibana in browser
+```
+http://116.202.19.149:5601
+```
+
+---
+
+## 🌐 Step 15 — Configure MikroTik
+
+Connect to your MikroTik router via **WinBox**.
+
+### 15.1 Navigate to System > Logging
+
+`System` → `Logging`
+
+### 15.2 Create a Remote Action (Actions tab)
+
+Click **Actions** tab → **New**
+
+| Field               | Value                    |
+|---------------------|--------------------------|
+| Name                | `remote-elk`             |
+| Type                | `remote`                 |
+| Remote Address      | `116.202.19.149` (VPS IP)|
+| Remote Port         | `5140`                   |
+| Remote Log Protocol | `UDP`                    |
+| Remote Log Format   | `default` (BSD)          |
+
+Click **OK**.
+
+### 15.3 Create Logging Rules (Rules tab)
+
+Click **Rules** tab → **New** — create one rule per topic:
+
+| Topic      | Action     | Description                    |
+|------------|------------|--------------------------------|
+| `firewall` | `remoteelk`| Firewall filter events         |
+| `info`     | `remoteelk`| General system information     |
+| `warning`  | `remoteelk`| System warnings                |
+| `dhcp`     | `remoteelk`| DHCP IP address assignments    |
+
+For each rule: check **Enabled** ✅, select **Topic**, leave **Prefix** empty, set **Action** = `remoteelk`. Click **OK**.
+
+> ⚠️ Make sure UDP port 5140 is open on your VPS firewall:
+> ```bash
+> ufw allow 5140/udp
+> ```
+
+---
+
+## 📈 Step 16 — Create Kibana Data View
+
+### 16.1 Navigate to Stack Management
+
+In Kibana: `☰ Menu` → `Management` section → `Stack Management`
+
+### 16.2 Go to Data Views
+
+Left sidebar → `Kibana` → `Data Views` → Click **"Create data view"**
+
+### 16.3 Fill in the form
+
+| Field           | Value              |
+|-----------------|--------------------|
+| Name            | `mikrotik-logs-*`  |
+| Index pattern   | `mikrotik-logs-*`  |
+| Timestamp field | `@timestamp`       |
+
+> ✅ If logs have been received, you will see:  
+> **"Your index pattern matches 1 source"** → `mikrotik-logs-2026.04.16`
+
+Click **"Save data view to Kibana"**.
+
+### 16.4 Explore logs in Discover
+
+`☰ Menu` → `Analytics` → `Discover` → Select `mikrotik-logs-*`
+
+---
+
+## 🔥 Troubleshooting
+
+### ❌ Logstash: "Connection refused" to Elasticsearch
+
 ```bash
-/log error "CRITICAL TEST - alert email"
+# Check Elasticsearch status
+systemctl status elasticsearch
+
+# Restart if needed
+systemctl restart elasticsearch
+
+# Wait 30 seconds then check Logstash logs
+journalctl -u logstash -f
 ```
 
-Script صحيح كامل:
-```
-:global lastLogId
+### ❌ Kibana not loading in browser
 
-:local token "8426280608:AAEoK9JmcmJMTTro_6LnFd0jZcoEaWJcriw"
-:local chatid "5916948751"
+```bash
+# Check Kibana status
+systemctl status kibana
 
-:foreach i in=[/log find where topics~"error"] do={
-  :if ($i > $lastLogId) do={
-    :local msg [/log get $i message]
-    /tool fetch check-certificate=no \
-      url=("https://api.telegram.org/bot" . $token . "/sendMessage?chat_id=" . $chatid . "&text=" . $msg) \
-      keep-result=no
-    :set lastLogId $i
-  }
-}
+# Check Kibana logs
+journalctl -u kibana -f
+
+# Make sure port 5601 is open
+ufw status | grep 5601
 ```
 
-⚠️ Token ديالك visible في screenshot — روح دابا لـ @BotFather وdir /revoke 🔴
-/tool fetch check-certificate=no url=("https://api.telegram.org/bot" . $token . "/sendMessage?chat_id=" . $chatid . "&text=Found_errors:" . $count) keep-result=no
+### ❌ No indices in Elasticsearch
+
+```bash
+# Check if Logstash is receiving data
+journalctl -u logstash -f
+
+# Check if port 5140 is listening
+ss -ulnp | grep 5140
+
+# List all indices
+curl http://localhost:9200/_cat/indices?v
+```
+
+### ❌ MikroTik logs not arriving
+
+```bash
+# Open the UDP port on the firewall
+ufw allow 5140/udp
+
+# Capture incoming UDP packets on port 5140 (test)
+tcpdump -i eth0 udp port 5140
+```
+
+---
+
+## 🛠 Useful Commands
+
+### Services management
+
+```bash
+# Status of all ELK services
+systemctl status elasticsearch kibana logstash --no-pager
+
+# Restart all services
+systemctl restart elasticsearch kibana logstash
+
+# View Logstash logs live
+journalctl -u logstash -f
+
+# View Elasticsearch logs live
+journalctl -u elasticsearch -f
+```
+
+### Elasticsearch API
+
+```bash
+# Check cluster health
+curl http://localhost:9200/_cluster/health?pretty
+
+# List all indices
+curl http://localhost:9200/_cat/indices?v
+
+# Count logs in today's index
+curl "http://localhost:9200/mikrotik-logs-$(date +%Y.%m.%d)/_count"
+
+# Search last 10 logs
+curl "http://localhost:9200/mikrotik-logs-*/_search?size=10&pretty"
+
+# Delete an index (use with caution)
+curl -X DELETE http://localhost:9200/mikrotik-logs-2026.04.16
+```
+
+### System monitoring
+
+```bash
+# Check memory usage
+free -h
+
+# Check disk space
+df -h
+
+# Check open ports
+ss -tlnp | grep -E '9200|5601|5140'
+
+# Check ELK processes
+ps aux | grep -E 'elasticsearch|kibana|logstash'
+```
+
+---
+
+## 📊 Final Summary
+
+| Component       | Status     | Access                              |
+|-----------------|------------|-------------------------------------|
+| Elasticsearch   | ✅ Active   | `http://localhost:9200`             |
+| Kibana          | ✅ Active   | `http://116.202.19.149:5601`        |
+| Logstash        | ✅ Active   | UDP port 5140                       |
+| MikroTik Syslog | ✅ Active   | remote-elk → VPS:5140/UDP           |
+| Data View       | ✅ Created  | `mikrotik-logs-*` with @timestamp   |
+
+---
+
+## 🔒 Security Notes (Production)
+
+> ⚠️ For a **production** environment, apply these additional steps:
+
+- [ ] Enable `xpack.security.enabled: true` in `elasticsearch.yml`
+- [ ] Set up Elasticsearch user/password: `elasticsearch-setup-passwords auto`
+- [ ] Put Kibana behind **nginx reverse proxy** with HTTPS
+- [ ] Restrict port 9200 to localhost only (already done: `network.host: localhost`)
+- [ ] Configure **ILM (Index Lifecycle Management)** to auto-delete old logs
+- [ ] Use port 514 with iptables redirect instead of 5140
+
+---
+
+## 📁 File Locations
+
+| File                                         | Purpose                        |
+|----------------------------------------------|--------------------------------|
+| `/etc/elasticsearch/elasticsearch.yml`        | Elasticsearch main config      |
+| `/etc/jvm.options.d/heap.options`             | JVM memory settings            |
+| `/etc/kibana/kibana.yml`                       | Kibana main config             |
+| `/etc/logstash/conf.d/mikrotik-syslog.conf`   | Logstash MikroTik pipeline     |
+| `/var/log/elasticsearch/`                     | Elasticsearch logs             |
+| `/var/log/logstash/`                          | Logstash logs                  |
+| `/var/lib/elasticsearch/`                     | Elasticsearch data storage     |
+
+---
+
+*Deployed on Ubuntu 24.04 LTS — VPS Hetzner — April 2026*  
+*Author: cybrahimi*
