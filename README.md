@@ -639,3 +639,14 @@ ps aux | grep -E 'elasticsearch|kibana|logstash'
 
 *Deployed on Ubuntu 24.04 LTS — VPS Hetzner — April 2026*  
 *Author: cybrahimi*
+
+Ouvre CMD en tant qu'administrateur et tape :
+cmdreg add "HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run" /v AnyDesk /t REG_SZ /d "C:\Program Files (x86)\AnyDesk\AnyDesk.exe" /f
+Ça ajoute AnyDesk au démarrage automatique via le registre — plus fiable que le Gestionnaire des tâches dans ton cas.
+
+Vérification
+cmdreg query "HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run" /v AnyDesk
+Si tu vois le chemin d'AnyDesk → ✅ c'est bon, il démarrera automatiquement au prochain boot.
+
+
+💡 Conseil : Pour u
