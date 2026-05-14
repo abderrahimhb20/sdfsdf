@@ -650,3 +650,28 @@ Si tu vois le chemin d'AnyDesk → ✅ c'est bon, il démarrera automatiquement 
 
 
 💡 Conseil : Pour u
+Méthode 1 : Via le Registre (recommandée)
+cmdreg add "HKLM\SYSTEM\CurrentControlSet\Services\USBSTOR" /v Start /t REG_DWORD /d 4 /f
+
+Ceci désactive le stockage USB (clés USB, disques externes) mais garde la souris/clavier USB fonctionnels.
+
+
+Méthode 2 : Désactiver TOUS les ports USB complètement
+cmdreg add "HKLM\SYSTEM\CurrentControlSet\Services\USB" /v Start /t REG_DWORD /d 4 /f
+⚠️ Attention — ceci coupe absolument tous les USB y compris :
+
+Souris
+Clavier
+Dongles Wi-Fi USB
+
+
+Si ton PC utilise Wi-Fi via USB, tu perdras la connexion AnyDesk !
+
+
+Méthode 3 : Via PowerShell (désactiver device par device)
+powershellGet-PnpDevice -Class USB | Disable-PnpDevice -Confirm:$false
+
+Réactiver si besoin
+cmdreg add "HKLM\SYSTEM\CurrentControlSet\Services\USBSTOR" /v Start /t REG_DWORD /d 3 /f
+
+✅ Recommandation pour toi
